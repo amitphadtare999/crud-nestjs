@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   Between,
+  EntityPropertyNotFoundError,
   Equal,
   FindManyOptions,
   FindOperator,
@@ -16,10 +17,14 @@ import {
   Not,
   Repository,
 } from 'typeorm';
-import { FetchRequestDto, FilterCriteria } from './dto/base-filter-dto';
+import {
+  FetchRequestDto,
+  IFetchRequestDto,
+  IFilterCriteria,
+} from './dto/base-filter-dto';
 
 export function mapOperatorToTypeOrmOperator<T>(
-  operator: FilterCriteria<T>['operator'],
+  operator: IFilterCriteria<T>['operator'],
   value: any,
 ): FindOperator<any> | any {
   switch (operator) {
@@ -72,7 +77,7 @@ export abstract class BaseService<T> {
     this.primaryKey = primaryKey;
   }
 
-  findAll(fetchRequestDto?: FetchRequestDto<T>): Promise<T[]> {
+  async findAll(fetchRequestDto?: FetchRequestDto): Promise<T[]> {
     const { filter, orderBy, limit = 10000, page = 1 } = fetchRequestDto;
 
     const findOptions: FindManyOptions<T> = {};
@@ -100,7 +105,15 @@ export abstract class BaseService<T> {
     findOptions.skip = skip;
     findOptions.take = limit;
 
-    return this.repo.find(findOptions);
+    try {
+      return await this.repo.find(findOptions);
+    } catch (error) {
+      console.error('Error in findAll:', error);
+      if (error instanceof EntityPropertyNotFoundError) {
+        throw new BadRequestException('Invalid request payload');
+      }
+      throw new Error('Error fetching data');
+    }
   }
 
   findOne(id: number): Promise<T | null> {
